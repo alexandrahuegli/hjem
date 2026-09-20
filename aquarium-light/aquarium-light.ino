@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <time.h>
+#include "secrets.h"
 
 // Hardware: drive the LED strip through a suitable MOSFET or LED-strip driver.
 // Do not connect an LED strip directly to an ESP32 GPIO.
@@ -16,9 +17,6 @@ constexpr uint32_t PWM_MAX_DUTY = (1UL << PWM_RESOLUTION_BITS) - 1;
 constexpr uint32_t MAX_DUTY =
     (PWM_MAX_DUTY * MAX_BRIGHTNESS_PERCENT) / 100;
 
-// Variables are set in the .env file.
-const char *WIFI_SSID = getenv("WIFI_SSID");
-const char *WIFI_PASSWORD = getenv("WIFI_PASSWORD");
 
 // Europe/Oslo, including daylight-saving time changes.
 const char *TIME_ZONE = "CET-1CEST,M3.5.0,M10.5.0/3";
@@ -33,6 +31,7 @@ constexpr uint32_t RAMP_DURATION_SECONDS = 60UL * 60UL;
 
 constexpr uint32_t SCHEDULE_UPDATE_INTERVAL_MS = 1000;
 constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 30000;
+constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;
 
 // Any time before this is treated as "not synchronized yet".
 constexpr time_t MIN_VALID_EPOCH = 1700000000;
@@ -40,11 +39,14 @@ constexpr time_t MIN_VALID_EPOCH = 1700000000;
 uint32_t lastScheduleUpdateMs = 0;
 uint32_t lastWifiAttemptMs = 0;
 uint32_t lastAppliedDuty = UINT32_MAX;
+bool wifiAttemptInProgress = false;
 bool pwmReady = false;
 
 bool wifiCredentialsAreConfigured() {
-  return strcmp(WIFI_SSID, "YOUR_WIFI_SSID") != 0 &&
-         strlen(WIFI_SSID) > 0 && strlen(WIFI_PASSWORD) > 0;
+  return strlen(WIFI_SSID) > 0 &&
+         strlen(WIFI_PASSWORD) > 0 &&
+         strcmp(WIFI_SSID, "YOUR_WIFI_SSID") != 0 &&
+         strcmp(WIFI_PASSWORD, "YOUR_WIFI_PASSWORD") != 0;
 }
 
 uint32_t interpolateDuty(uint32_t from, uint32_t to, uint32_t elapsed,
@@ -101,16 +103,43 @@ void applyDuty(uint32_t duty) {
     Serial.println("PWM write failed; keeping the previous output level.");
   }
 }
+void beginWiFiConnection() {
+  Serial.println("Starting Wi-Fi connection.");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  lastWifiAttemptMs = millis();
+  wifiAttemptInProgress = true;
+}
 
 void maintainWiFi() {
-  if (!wifiCredentialsAreConfigured() || WiFi.status() == WL_CONNECTED) {
+  if (!wifiCredentialsAreConfigured()) {
+    return;
+  }
+
+  const uint8_t status = WiFi.status();
+  if (status == WL_CONNECTED) {
+    if (wifiAttemptInProgress) {
+      Serial.print("Wi-Fi connected. IP address: ");
+      Serial.println(WiFi.localIP());
+      wifiAttemptInProgress = false;
+    }
+    return;
+  }
+
+  if (wifiAttemptInProgress) {
+    if (millis() - lastWifiAttemptMs < WIFI_CONNECT_TIMEOUT_MS) {
+      return;
+    }
+
+    Serial.printf("Wi-Fi connection timed out (status %u); retrying later.\n",
+                  status);
+    WiFi.disconnect();
+    wifiAttemptInProgress = false;
+    lastWifiAttemptMs = millis();
     return;
   }
 
   if (millis() - lastWifiAttemptMs >= WIFI_RETRY_INTERVAL_MS) {
-    Serial.println("Wi-Fi disconnected; retrying.");
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    lastWifiAttemptMs = millis();
+    beginWiFiConnection();
   }
 }
 
@@ -151,11 +180,10 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  lastWifiAttemptMs = millis();
 
-  // NTP supplies the real clock; TIME_ZONE converts it to local aquarium time.
+  // Configure NTP before starting the Wi-Fi connection.
   configTzTime(TIME_ZONE, NTP_SERVER_1, NTP_SERVER_2);
+  beginWiFiConnection();
   Serial.println("Waiting for Wi-Fi/NTP time synchronization.");
 }
 
