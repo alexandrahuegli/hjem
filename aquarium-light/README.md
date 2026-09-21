@@ -1,72 +1,77 @@
 # Aquarium Light Controller
 
-## Overview
-ESP32 C3 Mini based PWM controller for a 12V LED strip grow light. Timed on/off schedule via NTP, with MOSFET switching and buck converter power supply.
+An ESP32-C3 Mini controller for a dimmable 12 V LED-strip aquarium light.
+The controller uses local time from NTP, gradual sunrise and sunset ramps,
+and PWM through a MOSFET stage.
 
-## Hardware
+## Project files
 
-| Component | Role |
+- [`aquarium-light.ino`](aquarium-light.ino) — firmware and light schedule.
+- [`aquarium-light.md`](aquarium-light.md) — hardware, wiring, pinouts, and power notes.
+- [`secrets.h.example`](secrets.h.example) — safe template for local Wi-Fi credentials.
+- `secrets.h` — local credentials; ignored by Git and must not be committed.
+- [`.gitignore`](.gitignore) — keeps `secrets.h` out of Git.
+
+## Current light schedule
+
+The firmware uses Europe/Oslo local time:
+
+| Time | Output |
 |---|---|
-| ESP32 C3 Mini | Controller, WiFi, NTP, PWM |
-| XL4015 buck converter | 12V → 5V for ESP32 |
-| IRFB7545 MOSFET | Switches 12V LED strip |
-| BC337 NPN transistor | Level shifts 3.3V GPIO to 5V gate drive |
-| 12V 24W PSU | Main power input |
-| 2835 double row LED strip | Grow light output |
+| 08:00–09:00 | Gradual ramp from 0% to 40% PWM |
+| 09:00–8:00 | 40% PWM |
+| 18:00–19:00 | Gradual ramp from 40% to 0% PWM |
+| 19:00–08:00 | Off |
 
-## Wiring
+`40%` is the maximum PWM duty cycle configured in the firmware. It is not a
+measurement of the light reaching the plants. The light stays off until the
+clock has successfully synchronized with NTP after startup.
 
-### Power
-- 12V PSU → XL4015 IN+ / IN- (set output to 5V)
-- XL4015 OUT+ → ESP32 VIN
-- 12V PSU → LED strip positive
-- Common GND throughout
+## Setup
 
-### Gate drive (inverted logic)
-- ESP32 GPIO3 → 10kΩ → BC337 Base (middle pin)
-- BC337 Emitter (left pin) → GND
-- BC337 Collector (right pin) → 100Ω → MOSFET Gate (left pin)
-- 5V → 10kΩ pullup → MOSFET Gate
+The commands below assume that `arduino-cli` and the ESP32 board package are
+already installed.
 
-### LED switching
-- LED strip negative → MOSFET Drain (middle pin)
-- MOSFET Source (right pin) → GND
+1. Create the local credentials file and edit the placeholders:
 
-## Component Pinouts
+   ```sh
+   cp secrets.h.example secrets.h
+   ```
 
-### BC337 (flat face toward you, legs down)
-- Left → Emitter → GND
-- Middle → Base → 10kΩ → GPIO3
-- Right → Collector → 100Ω → MOSFET Gate + 10kΩ pullup to 5V
+2. Compile the sketch:
 
-### IRFB7545 (flat face toward you, legs down)
-- Left → Gate
-- Middle → Drain → LED strip negative
-- Right → Source → GND
+   ```sh
+   arduino-cli compile --fqbn esp32:esp32:esp32c3 .
+   ```
 
-## Logic (inverted)
-| GPIO3 | BC337 | MOSFET | LEDs |
-|---|---|---|---|
-| HIGH (3.3V) | ON | OFF | OFF |
-| LOW (0V) | OFF | ON | ON |
+3. Upload it to the controller. Replace the port if needed:
 
-## Firmware (TODO)
-- Connect to WiFi
-- Sync time via NTP
-- GPIO3 LOW during light hours (e.g. 08:00–20:00)
-- GPIO3 HIGH outside light hours
-- Optional: PWM dimming via `ledcWrite()`
+   ```sh
+   arduino-cli upload \
+     --port /dev/ttyACM0 \
+     --fqbn esp32:esp32:esp32c3 \
+     --verify \
+     .
+   ```
 
-## Power Budget
-| PSU | Max safe strip length |
-|---|---|
-| 9W | ~30cm |
-| 24W | ~80cm |
+4. Monitor startup and NTP messages:
 
-Strip: 2835 double row 240 LEDs/m (~0.1W per LED)
+   ```sh
+   arduino-cli monitor \
+     --port /dev/ttyACM0 \
+     --config baudrate=115200
+   ```
 
-## Notes
-- Logic is inverted — account for this in firmware
-- XL4015 has onboard voltage display — set to exactly 5.0V before connecting ESP32
-- Common GND shared between 12V and 5V systems
-- Strip length TBD pending 24W PSU arrival
+## Security
+
+Do not commit `secrets.h` or paste its contents into issues, pull requests, or
+public logs. If the real credentials are ever committed or exposed, change the
+Wi-Fi password.
+
+## Hardware safety
+
+- Do not connect the LED strip directly to an ESP32 GPIO.
+- Verify that the XL4015 output is exactly 5.0 V before connecting the ESP32.
+- Disconnect power before changing wiring.
+- Read [`aquarium-light.md`](aquarium-light.md) before assembling the MOSFET,
+  transistor, buck-converter, and common-ground connections.

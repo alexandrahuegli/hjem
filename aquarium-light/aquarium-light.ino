@@ -7,7 +7,7 @@
 // Do not connect an LED strip directly to an ESP32 GPIO.
 constexpr uint8_t LED_PIN = 3;
 
-// Start conservatively. This is the maximum PWM level during the 09:00-18:00
+// Start conservatively. This is the maximum PWM level during the 09:00-17:00
 // period, not the percentage of the daytime period.
 constexpr uint8_t MAX_BRIGHTNESS_PERCENT = 40;
 
