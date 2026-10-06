@@ -5,6 +5,10 @@ services:
     volumes:
       - "./data:/config"
       - "/etc/localtime:/etc/localtime:ro"
+      - "/run/dbus:/run/dbus:ro"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     environment:
       TZ: Europe/Oslo
     restart: unless-stopped
