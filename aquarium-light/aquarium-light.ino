@@ -1,15 +1,20 @@
 #include <Arduino.h>
+#include <ArduinoOTA.h>
 #include <WiFi.h>
 #include <time.h>
 #include "secrets.h"
+
+#ifndef OTA_PASSWORD
+#define OTA_PASSWORD ""
+#endif
 
 // Hardware: drive the LED strip through a suitable MOSFET or LED-strip driver.
 // Do not connect an LED strip directly to an ESP32 GPIO.
 constexpr uint8_t LED_PIN = 3;
 
-// Start conservatively. This is the maximum PWM level during the 09:00-17:00
+// Start conservatively. This is the maximum PWM level during the 09:00-18:00
 // period, not the percentage of the daytime period.
-constexpr uint8_t MAX_BRIGHTNESS_PERCENT = 40;
+constexpr uint8_t MAX_BRIGHTNESS_PERCENT = 30;
 
 constexpr uint32_t PWM_FREQUENCY_HZ = 1000;
 constexpr uint8_t PWM_RESOLUTION_BITS = 12;
@@ -41,6 +46,8 @@ uint32_t lastWifiAttemptMs = 0;
 uint32_t lastAppliedDuty = UINT32_MAX;
 bool wifiAttemptInProgress = false;
 bool pwmReady = false;
+bool otaSetupAttempted = false;
+bool otaReady = false;
 
 bool wifiCredentialsAreConfigured() {
   return strlen(WIFI_SSID) > 0 &&
@@ -103,6 +110,35 @@ void applyDuty(uint32_t duty) {
     Serial.println("PWM write failed; keeping the previous output level.");
   }
 }
+void configureOta() {
+  if (otaSetupAttempted) {
+    return;
+  }
+  otaSetupAttempted = true;
+
+  if (strlen(OTA_PASSWORD) == 0) {
+    Serial.println(
+        "OTA disabled; set OTA_PASSWORD in secrets.h and flash over USB once.");
+    return;
+  }
+
+  ArduinoOTA.setHostname("aquarium-light");
+  ArduinoOTA.setPassword(OTA_PASSWORD);
+  ArduinoOTA
+      .onStart([]() { Serial.println("OTA update started."); })
+      .onEnd([]() { Serial.println("\nOTA update finished."); })
+      .onProgress([](unsigned int progress, unsigned int total) {
+        Serial.printf("OTA progress: %u%%\n", (progress * 100U) / total);
+      })
+      .onError([](ota_error_t error) {
+        Serial.printf("OTA update failed with error %u.\n", error);
+      });
+
+  ArduinoOTA.begin();
+  otaReady = true;
+  Serial.println("OTA ready at aquarium-light.local.");
+}
+
 void beginWiFiConnection() {
   Serial.println("Starting Wi-Fi connection.");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -122,6 +158,7 @@ void maintainWiFi() {
       Serial.println(WiFi.localIP());
       wifiAttemptInProgress = false;
     }
+    configureOta();
     return;
   }
 
@@ -177,6 +214,7 @@ void setup() {
     return;
   }
 
+  WiFi.setHostname("aquarium-light");
   WiFi.mode(WIFI_STA);
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
@@ -189,6 +227,10 @@ void setup() {
 
 void loop() {
   maintainWiFi();
+
+  if (otaReady && WiFi.status() == WL_CONNECTED) {
+    ArduinoOTA.handle();
+  }
 
   if (millis() - lastScheduleUpdateMs >= SCHEDULE_UPDATE_INTERVAL_MS) {
     lastScheduleUpdateMs = millis();

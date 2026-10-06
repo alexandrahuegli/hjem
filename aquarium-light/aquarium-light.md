@@ -54,10 +54,11 @@ ESP32 C3 Mini based PWM controller for a 12V LED strip grow light. Timed on/off 
 - Connect to WiFi and synchronize time via NTP
 - Use Europe/Oslo local time, including daylight-saving changes
 - Ramp the light from 0% to 30% between 08:00 and 09:00
-- Hold the light at 30% PWM from 09:00 to 17:00
-- Ramp the light from 30% to 0% between 17:00 and 18:00
-- Keep the light off outside 08:00–18:00
+- Hold the light at 30% PWM from 09:00 to 18:00
+- Ramp the light from 30% to 0% between 18:00 and 19:00
+- Keep the light off outside 08:00–19:00
 - Fail dark until time synchronization succeeds
+- Provide authenticated OTA when `OTA_PASSWORD` is configured
 
 `MAX_BRIGHTNESS_PERCENT` is the maximum PWM duty cycle, not a measurement of
 the light level reaching the aquarium. The current value is intentionally
