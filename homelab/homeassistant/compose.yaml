@@ -1,0 +1,12 @@
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    network_mode: host
+    volumes:
+      - "./data:/config"
+      - "/etc/localtime:/etc/localtime:ro"
+    environment:
+      TZ: Europe/Oslo
+    restart: unless-stopped
+    stop_grace_period: 60s
+
