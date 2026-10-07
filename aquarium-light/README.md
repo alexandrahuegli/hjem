@@ -62,7 +62,7 @@ already installed.
    ```sh
    arduino-cli compile \
      --fqbn esp32:esp32:esp32c3 \
-     --board-options PartitionScheme=default \
+     --board-options=PartitionScheme=default \
      .
    ```
 
@@ -72,7 +72,7 @@ already installed.
    arduino-cli upload \
      --port /dev/ttyACM0 \
      --fqbn esp32:esp32:esp32c3 \
-     --board-options PartitionScheme=default \
+     --board-options=PartitionScheme=default \
      --verify \
      .
    ```
