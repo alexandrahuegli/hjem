@@ -7,9 +7,9 @@
 // Do not connect an LED strip directly to an ESP32 GPIO.
 constexpr uint8_t LED_PIN = 3;
 
-// Start conservatively. This is the maximum PWM level during the 09:00-17:00
+// Start conservatively. This is the maximum PWM level during the 09:00-18:00
 // period, not the percentage of the daytime period.
-constexpr uint8_t MAX_BRIGHTNESS_PERCENT = 40;
+constexpr uint8_t MAX_BRIGHTNESS_PERCENT = 30;
 
 constexpr uint32_t PWM_FREQUENCY_HZ = 1000;
 constexpr uint8_t PWM_RESOLUTION_BITS = 12;
@@ -30,16 +30,15 @@ constexpr uint32_t EVENING_END_SECONDS = 19UL * 60UL * 60UL;
 constexpr uint32_t RAMP_DURATION_SECONDS = 60UL * 60UL;
 
 constexpr uint32_t SCHEDULE_UPDATE_INTERVAL_MS = 1000;
-constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 30000;
-constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;
+constexpr uint32_t WIFI_STATUS_LOG_INTERVAL_MS = 10000;
 
 // Any time before this is treated as "not synchronized yet".
 constexpr time_t MIN_VALID_EPOCH = 1700000000;
 
 uint32_t lastScheduleUpdateMs = 0;
-uint32_t lastWifiAttemptMs = 0;
+uint32_t lastWifiStatusLogMs = 0;
 uint32_t lastAppliedDuty = UINT32_MAX;
-bool wifiAttemptInProgress = false;
+int lastReportedWifiStatus = -1;
 bool pwmReady = false;
 
 bool wifiCredentialsAreConfigured() {
@@ -103,11 +102,44 @@ void applyDuty(uint32_t duty) {
     Serial.println("PWM write failed; keeping the previous output level.");
   }
 }
+
+void reportWiFiDisconnect(arduino_event_id_t event,
+                         arduino_event_info_t info) {
+  if (event != ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+    return;
+  }
+
+  const uint8_t reason = info.wifi_sta_disconnected.reason;
+  Serial.print("Wi-Fi disconnect reason ");
+  Serial.print(reason);
+  Serial.print(" (\"");
+  Serial.print(WiFi.disconnectReasonName(
+      static_cast<wifi_err_reason_t>(reason)));
+  Serial.println("\")");
+}
+
+void reportVisibleWiFiNetworks() {
+  Serial.println("Scanning for visible Wi-Fi networks.");
+  const int16_t networkCount = WiFi.scanNetworks();
+
+  if (networkCount == WIFI_SCAN_FAILED) {
+    Serial.println("Wi-Fi scan failed.");
+    return;
+  }
+
+  Serial.printf("Wi-Fi scan found %d network(s).\n", networkCount);
+  for (int16_t index = 0; index < networkCount; ++index) {
+    Serial.printf("  %s | RSSI %d dBm | channel %d | auth %d\n",
+                  WiFi.SSID(index).c_str(), WiFi.RSSI(index),
+                  WiFi.channel(index),
+                  static_cast<int>(WiFi.encryptionType(index)));
+  }
+  WiFi.scanDelete();
+}
+
 void beginWiFiConnection() {
   Serial.println("Starting Wi-Fi connection.");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  lastWifiAttemptMs = millis();
-  wifiAttemptInProgress = true;
 }
 
 void maintainWiFi() {
@@ -116,31 +148,26 @@ void maintainWiFi() {
   }
 
   const uint8_t status = WiFi.status();
+  const bool statusChanged =
+      static_cast<int>(status) != lastReportedWifiStatus;
+  const bool statusLogDue =
+      millis() - lastWifiStatusLogMs >= WIFI_STATUS_LOG_INTERVAL_MS;
+
+  if (!statusChanged && !statusLogDue) {
+    return;
+  }
+
+  lastReportedWifiStatus = status;
+  lastWifiStatusLogMs = millis();
+
   if (status == WL_CONNECTED) {
-    if (wifiAttemptInProgress) {
-      Serial.print("Wi-Fi connected. IP address: ");
-      Serial.println(WiFi.localIP());
-      wifiAttemptInProgress = false;
-    }
+    Serial.print("Wi-Fi connected. IP address: ");
+    Serial.println(WiFi.localIP());
     return;
   }
 
-  if (wifiAttemptInProgress) {
-    if (millis() - lastWifiAttemptMs < WIFI_CONNECT_TIMEOUT_MS) {
-      return;
-    }
-
-    Serial.printf("Wi-Fi connection timed out (status %u); retrying later.\n",
-                  status);
-    WiFi.disconnect();
-    wifiAttemptInProgress = false;
-    lastWifiAttemptMs = millis();
-    return;
-  }
-
-  if (millis() - lastWifiAttemptMs >= WIFI_RETRY_INTERVAL_MS) {
-    beginWiFiConnection();
-  }
+  Serial.printf("Wi-Fi not connected; status %u. Auto-reconnect is enabled.\n",
+                status);
 }
 
 void updateSchedule() {
@@ -180,9 +207,12 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
+  WiFi.onEvent(reportWiFiDisconnect,
+               ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 
   // Configure NTP before starting the Wi-Fi connection.
   configTzTime(TIME_ZONE, NTP_SERVER_1, NTP_SERVER_2);
+  reportVisibleWiFiNetworks();
   beginWiFiConnection();
   Serial.println("Waiting for Wi-Fi/NTP time synchronization.");
 }
