@@ -23,8 +23,8 @@ const char *TIME_ZONE = "CET-1CEST,M3.5.0,M10.5.0/3";
 const char *NTP_SERVER_1 = "pool.ntp.org";
 const char *NTP_SERVER_2 = "time.nist.gov";
 
-constexpr uint32_t MORNING_START_SECONDS = 8UL * 60UL * 60UL;
-constexpr uint32_t MORNING_END_SECONDS = 9UL * 60UL * 60UL;
+constexpr uint32_t MORNING_START_SECONDS = 9UL * 60UL * 60UL;
+constexpr uint32_t MORNING_END_SECONDS = 10UL * 60UL * 60UL;
 constexpr uint32_t EVENING_START_SECONDS = 18UL * 60UL * 60UL;
 constexpr uint32_t EVENING_END_SECONDS = 19UL * 60UL * 60UL;
 constexpr uint32_t RAMP_DURATION_SECONDS = 60UL * 60UL;

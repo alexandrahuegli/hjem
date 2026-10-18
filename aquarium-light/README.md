@@ -18,12 +18,12 @@ The firmware uses Europe/Oslo local time:
 
 | Time | Output |
 |---|---|
-| 08:00–09:00 | Gradual ramp from 0% to 40% PWM |
-| 09:00–8:00 | 40% PWM |
-| 18:00–19:00 | Gradual ramp from 40% to 0% PWM |
-| 19:00–08:00 | Off |
+| 09:00–10:00 | Gradual ramp from 0% to 30% PWM |
+| 10:00–18:00 | 30% PWM |
+| 18:00–19:00 | Gradual ramp from 30% to 0% PWM |
+| 19:00–09:00 | Off |
 
-`40%` is the maximum PWM duty cycle configured in the firmware. It is not a
+`30%` is the maximum PWM duty cycle configured in the firmware. It is not a
 measurement of the light reaching the plants. The light stays off until the
 clock has successfully synchronized with NTP after startup.
 
@@ -41,7 +41,10 @@ already installed.
 2. Compile the sketch:
 
    ```sh
-   arduino-cli compile --fqbn esp32:esp32:esp32c3 .
+   arduino-cli compile \
+     --fqbn esp32:esp32:esp32c3 \
+     --board-options PartitionScheme=default,CDCOnBoot=cdc \
+     .
    ```
 
 3. Upload it to the controller. Replace the port if needed:
@@ -50,6 +53,7 @@ already installed.
    arduino-cli upload \
      --port /dev/ttyACM0 \
      --fqbn esp32:esp32:esp32c3 \
+     --board-options PartitionScheme=default,CDCOnBoot=cdc \
      --verify \
      .
    ```
@@ -61,6 +65,10 @@ already installed.
      --port /dev/ttyACM0 \
      --config baudrate=115200
    ```
+
+   `CDCOnBoot=cdc` keeps the firmware's USB serial output available for
+   monitoring. Stop the monitor before uploading, because both commands need
+   exclusive access to `/dev/ttyACM0`.
 
 ## Security
 
